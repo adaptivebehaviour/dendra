@@ -6,6 +6,7 @@
     "collection"
   ],
   "private": true,
+  "license": "MIT",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
