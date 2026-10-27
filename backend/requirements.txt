@@ -1,0 +1,10 @@
+fastapi>=0.115
+uvicorn[standard]>=0.32
+
+# Transitive runtime dependency of the shared manifesto library
+# (manifesto.fetch.FetchOperation, imported unconditionally by
+# manifesto/__init__.py's register_manifesto_collection()) — needed here too
+# since this package is deployable standalone from just this file.
+httpx>=0.27
+./vendor/ab_desktop-2.3.0-py3-none-any.whl
+./vendor/ab_manifesto-2.3.0-py3-none-any.whl

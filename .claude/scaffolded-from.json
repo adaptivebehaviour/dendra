@@ -1,0 +1,15 @@
+{
+  "mode": "packages",
+  "release": "2.3.0",
+  "source": "electron-fastapi",
+  "project_type": "composite",
+  "application": "electron-fastapi",
+  "frontend": {
+    "language": "js",
+    "app_type": "electron"
+  },
+  "backend": {
+    "language": "python",
+    "app_type": "fastapi"
+  }
+}

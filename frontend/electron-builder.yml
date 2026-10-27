@@ -1,0 +1,52 @@
+# Packaging for the Electron application with a Python backend.
+# Before packaging, build the bundled Python runtime:  (in ../backend)  python scripts/bundle_python.py
+# Then:  npm run package  (unpacked app)  or  npm run dist  (installer).
+# A project scaffolded from this application changes appId and productName.
+appId: com.adaptivebehaviour.dendra
+productName: dendra
+directories:
+  output: dist
+# Everything the app needs is bundled into out/ by electron-vite, so node_modules is left out of the package.
+files:
+  - out/**/*
+  - package.json
+  - "!**/node_modules/**"
+# The Python backend runs from files next to the app, not from inside the asar: a process cannot execute a file in an
+# archive. sidecar.ts looks for  resources/python/<python>  and  resources/backend/main.py.
+extraResources:
+  - from: ../backend/build/python
+    to: python
+    filter:
+      - "**/*"
+  - from: ../backend/main.py
+    to: backend/main.py
+  - from: ../backend/src
+    to: backend/src
+    filter:
+      - "**/*.py"
+asar: true
+npmRebuild: false
+# Hardening applied to the Electron binary itself: no running as plain Node, no Node debugging switches or
+# NODE_OPTIONS, and the app is loaded only from its (integrity-checked) asar.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableCookieEncryption: true
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
+win:
+  target:
+    - nsis
+  # v1 builds are unsigned and for internal use (decision D5). Signing needs a certificate; when there is one, remove this line.
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  # Per-user install: no administrator rights needed.
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  # Uninstalling never touches the app's data folder.
+  deleteAppDataOnUninstall: false
+# No auto-update feed in v1 (decision D5): without this, electron-builder tries to detect a publish provider and fails.
+publish: null

@@ -1,0 +1,11 @@
+{
+  "name": "dendra-collection",
+  "version": "1.0.0",
+  "private": true,
+  "exports": {
+    "./src/*": "./src/*"
+  },
+  "peerDependencies": {
+    "react": "^19.2.5"
+  }
+}
