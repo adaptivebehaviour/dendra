@@ -40,8 +40,6 @@ export interface CreateStepInput {
 /** The functions the preload script exposes to the renderer as `window.workspaceBridge`. */
 export interface WorkspaceBridge {
   current(): Promise<WorkspaceState | undefined>;
-  create(name: string): Promise<WorkspaceResult>;
-  open(): Promise<WorkspaceResult>;
   createStep(input: CreateStepInput): Promise<WorkspaceResult>;
   listStep(number: string): Promise<StepItem[]>;
   openStepFolder(number: string): Promise<void>;

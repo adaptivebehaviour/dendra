@@ -71,11 +71,6 @@ function NameDialog({ testId, label, submitLabel, onSubmit, onCancel, children }
   );
 }
 
-/** Asks for the name of a new workspace (PRD 5.1, 6.2). */
-export function NewWorkspaceDialog({ onSubmit, onCancel }: { onSubmit: (name: string) => void; onCancel: () => void }) {
-  return <NameDialog testId="new-dialog" label="Workspace name" submitLabel="Next" onSubmit={onSubmit} onCancel={onCancel} />;
-}
-
 interface StepDialogProps {
   kind: 'sequential' | 'branching';
   /** The step the user right-clicked. */

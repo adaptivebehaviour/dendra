@@ -7,13 +7,8 @@ import type { CreateStepInput, StepEntry, StepItem, WorkspaceResult, WorkspaceSt
 const WORKSPACE_FILE = 'dendra.json';
 
 export interface WorkspaceOptions {
-  /** File (in the application's own data folder) remembering the last workspace. */
-  settingsFile: string;
-  /** Shows the folder picker; resolves with `undefined` if the user cancels. */
-  pickFolder: (purpose: 'create' | 'open') => Promise<string | undefined>;
   /** Opens a file or folder with the application the system associates with it; resolves with an error message, or an empty string if it worked. */
   openPath: (path: string) => Promise<string>;
-  onError?: (error: unknown) => void;
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -40,52 +35,24 @@ export class Workspace {
     return this.root ? { name: basename(this.root), tree: this.tree } : undefined;
   }
 
-  /** Reopens the last workspace, if it is still a workspace folder. */
-  async reopenLast(): Promise<void> {
-    let folder: unknown;
+  /** Makes the empty folder the framework's workspace manager has just created a dendra workspace (the start step and `dendra.json`), and opens it. */
+  async create(folder: string): Promise<void> {
     try {
-      folder = JSON.parse(await readFile(this.options.settingsFile, 'utf8')).path;
-    } catch {
-      return; // no (readable) record of a last workspace
+      await mkdir(join(folder, stepFolderName(startStep)));
+      await writeFile(join(folder, WORKSPACE_FILE), serialise([startStep]));
+    } catch (error) {
+      await rm(folder, { recursive: true, force: true });
+      throw error;
     }
-    if (typeof folder === 'string' && (await exists(join(folder, WORKSPACE_FILE)))) await this.openFolder(folder);
+    await this.open(folder);
   }
 
-  /** Creates a workspace named `name` in a folder the user picks. */
-  async create(name: string): Promise<WorkspaceResult> {
-    try {
-      const problem = folderNameProblem(name);
-      if (problem) throw new Error(problem);
-      const parent = await this.options.pickFolder('create');
-      if (!parent) return { status: 'cancelled' };
-      let folder = join(parent, name);
-      for (let copy = 1; await exists(folder); copy += 1) folder = join(parent, `${name}-${copy}`);
-      await mkdir(folder);
-      try {
-        await mkdir(join(folder, stepFolderName(startStep)));
-        await writeFile(join(folder, WORKSPACE_FILE), serialise([startStep]));
-      } catch (error) {
-        await rm(folder, { recursive: true, force: true });
-        throw error;
-      }
-      await this.openFolder(folder);
-      return { status: 'done', workspace: this.state()! };
-    } catch (error) {
-      return failed(error);
-    }
-  }
-
-  /** Lets the user pick a workspace folder; a folder without `dendra.json` is rejected. */
-  async open(): Promise<WorkspaceResult> {
-    try {
-      const folder = await this.options.pickFolder('open');
-      if (!folder) return { status: 'cancelled' };
-      if (!(await exists(join(folder, WORKSPACE_FILE)))) throw new Error(`That folder is not a dendra workspace: it has no ${WORKSPACE_FILE}.`);
-      await this.openFolder(folder);
-      return { status: 'done', workspace: this.state()! };
-    } catch (error) {
-      return failed(error);
-    }
+  /** Opens a folder as the workspace; a folder without `dendra.json` is rejected. */
+  async open(folder: string): Promise<void> {
+    if (!(await exists(join(folder, WORKSPACE_FILE)))) throw new Error(`That folder is not a dendra workspace: it has no ${WORKSPACE_FILE}.`);
+    const tree = parseDendraJson(await readFile(join(folder, WORKSPACE_FILE), 'utf8'));
+    this.root = folder;
+    this.tree = tree;
   }
 
   /** Adds a step after (sequential) or beside (branching) the step numbered `input.preceding`. */
@@ -144,17 +111,6 @@ export class Workspace {
   private async openInSystem(path: string): Promise<void> {
     const problem = await this.options.openPath(path);
     if (problem) throw new Error(problem);
-  }
-
-  private async openFolder(folder: string): Promise<void> {
-    const tree = parseDendraJson(await readFile(join(folder, WORKSPACE_FILE), 'utf8'));
-    this.root = folder;
-    this.tree = tree;
-    try {
-      await writeFile(this.options.settingsFile, JSON.stringify({ path: folder }, null, 2) + '\n');
-    } catch (error) {
-      this.options.onError?.(error); // the workspace is open; it just will not be reopened at startup
-    }
   }
 
   private requireRoot(): string {

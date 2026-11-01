@@ -1,16 +1,26 @@
-import { Icon } from './icons';
+import type { ReactNode } from 'react';
+import newFolderIcon from './icons/folder-plus.svg';
+import openFolderIcon from './icons/folder-open.svg';
 
-/** A horizontal toolbar of icon-only buttons (labelled for assistive technology, with no visible text). */
-export function Toolbar({ onNew, onOpen }: { onNew: () => void; onOpen: () => void }) {
-  const button = 'inline-flex h-9 w-9 items-center justify-center rounded hover:bg-black/10';
+function ToolbarButton({ label, onClick, children }: { label: string; onClick(): void; children: ReactNode }) {
   return (
-    <div role="toolbar" aria-label="Toolbar" data-testid="toolbar" className="flex flex-row items-center gap-1 border-b border-black/10 p-1">
-      <button type="button" aria-label="New" title="New" data-testid="new-button" className={button} onClick={onNew}>
-        <Icon name="new" />
+    <button type="button" aria-label={label} title={label} onClick={onClick} className="rounded p-1.5 hover:bg-gray-200">
+      {children}
       </button>
-      <button type="button" aria-label="Open" title="Open" data-testid="open-button" className={button} onClick={onOpen}>
-        <Icon name="open" />
-      </button>
+  );
+}
+
+/** The horizontal strip of buttons at the top of the screen. */
+export function Toolbar({ onNewWorkspace, onOpenWorkspace }: { onNewWorkspace(): void; onOpenWorkspace(): void }) {
+  return (
+    <div role="toolbar" className="flex items-center gap-1 border-b border-gray-300 p-1" data-testid="toolbar">
+      <ToolbarButton label="New workspace" onClick={onNewWorkspace}>
+        <img src={newFolderIcon} alt="" className="h-5 w-5" />
+      </ToolbarButton>
+      <ToolbarButton label="Open workspace" onClick={onOpenWorkspace}>
+        <img src={openFolderIcon} alt="" className="h-5 w-5" />
+      </ToolbarButton>
+      <div role="separator" aria-orientation="vertical" className="mx-1 h-6 w-px bg-gray-300" />
     </div>
   );
 }

@@ -1,7 +1,7 @@
-import { createHandlers } from '@adaptivebehaviour/desktop/src/main/index';
+import { createHandlers, Settings, WorkspaceManager } from '@adaptivebehaviour/desktop/src/main/index';
 import { registerHandlers, type IpcEventLike } from '@adaptivebehaviour/desktop/src/ipc/index';
 import { buildCsp, EnvironmentCredentials, NetworkServices } from '@adaptivebehaviour/desktop/src/net/index';
-import { app, BrowserWindow, dialog, ipcMain, net as electronNet, protocol, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, net as electronNet, protocol, session, shell } from 'electron';
 import { join, normalize, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { CreateStepInput } from '../shared/types';
@@ -23,14 +23,12 @@ function isAppUrl(url: string): boolean {
   return url.startsWith(`${APP_ORIGIN}/`) || (devUrl !== undefined && url.startsWith(devUrl));
 }
 
-async function pickFolder(purpose: 'create' | 'open'): Promise<string | undefined> {
-  const options: Electron.OpenDialogOptions = {
-    title: purpose === 'create' ? 'Choose where to create the workspace' : 'Choose a workspace folder',
-    properties: purpose === 'create' ? ['openDirectory', 'createDirectory'] : ['openDirectory'],
-  };
-  const window = BrowserWindow.getFocusedWindow();
-  const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
-  return result.canceled ? undefined : result.filePaths[0];
+/** Shows the OS folder picker over the window, opened at `defaultPath`. `null` if the user cancels. */
+async function pickFolder({ title, defaultPath }: { title: string; defaultPath: string }): Promise<string | null> {
+  const options = { title, defaultPath, properties: ['openDirectory' as const, 'createDirectory' as const] };
+  const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const result = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
+  return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]!;
 }
 
 function isCreateStepInput(value: unknown): value is CreateStepInput {
@@ -99,6 +97,8 @@ function createWindow(): BrowserWindow {
     minHeight: 480,
     show: false,
     title: APP_NAME,
+    // The menu is hidden until the user presses Alt.
+    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -131,33 +131,51 @@ if (!app.requestSingleInstanceLock()) {
     // The one data destination (see config.ts); the renderer reaches it only through the `data.*` channels.
     const data = createDestination(destination, { userData: app.getPath('userData') });
     await data.start?.().catch((error) => log('[data] could not start:', error instanceof Error ? error.message : error));
+    // Workspaces start in the system's folder for documents (Documents on Windows); the last workspace and the
+    // workspace location path are remembered in settings.json in the user-data folder.
+    const workspaceManager = new WorkspaceManager({
+      defaultLocation: app.getPath('documents'),
+      pickFolder,
+      settings: new Settings(join(app.getPath('userData'), 'settings.json')),
+    });
+    await workspaceManager.restore();
+    // A dendra workspace is a workspace folder holding `dendra.json` and the step folders. The framework's manager picks
+    // and creates the folder; `workspace` then reads (or, for a new folder, initialises) its steps.
+    const workspace = new Workspace({ openPath: (path) => shell.openPath(path) });
+    const workspaces: Pick<WorkspaceManager, 'beginNew' | 'chooseLocation' | 'create' | 'open'> = {
+      beginNew: () => workspaceManager.beginNew(),
+      chooseLocation: () => workspaceManager.chooseLocation(),
+      create: async (name) => {
+        const info = await workspaceManager.create(name);
+        await workspace.create(info.path);
+        return info;
+      },
+      open: async () => {
+        const info = await workspaceManager.open();
+        if (info) await workspace.open(info.path);
+        return info;
+      },
+    };
     const handlers = createHandlers({
       app: { name: APP_NAME, version: app.getVersion(), platform: process.platform },
       net,
       sidecar,
       data,
+      workspaces,
     });
     registerHandlers(ipcMain, handlers, {
       isTrustedSender: (event: IpcEventLike) => isAppUrl(event.senderFrame?.url ?? ''),
       onError: (channel, error) => log(`[ipc] ${channel} failed:`, error instanceof Error ? error.message : error),
     });
 
-    // The workspace is a folder the user picks; the last one is reopened at startup. The renderer reaches it only
-    // through the `dendra:workspace.*` channels below, never with a path of its own.
-    const workspace = new Workspace({
-      settingsFile: join(app.getPath('userData'), 'last-workspace.json'),
-      pickFolder,
-      openPath: (path) => shell.openPath(path),
-      onError: (error) => log('[workspace]', error instanceof Error ? error.message : error),
-    });
+    // The steps of the open workspace. The renderer reaches them only through the `dendra:workspace.*` channels below,
+    // never with a path of its own; creating and opening a workspace go through the `workspace.*` channels above.
     const handle = (name: string, handler: (...args: unknown[]) => unknown) =>
       ipcMain.handle(`dendra:workspace.${name}`, (event, ...args: unknown[]) => {
         if (!isAppUrl(event.senderFrame?.url ?? '')) throw new Error('Untrusted sender');
         return handler(...args);
       });
     handle('current', () => workspace.state());
-    handle('create', (name) => (typeof name === 'string' ? workspace.create(name) : Promise.reject(new Error('Invalid workspace name'))));
-    handle('open', () => workspace.open());
     handle('createStep', (input) => (isCreateStepInput(input) ? workspace.createStep(input) : Promise.reject(new Error('Invalid step'))));
     handle('listStep', (number) => (typeof number === 'string' ? workspace.listStep(number) : Promise.reject(new Error('Invalid step number'))));
     handle('openStepFolder', (number) => (typeof number === 'string' ? workspace.openStepFolder(number) : Promise.reject(new Error('Invalid step number'))));
@@ -165,11 +183,13 @@ if (!app.requestSingleInstanceLock()) {
       typeof number === 'string' && typeof name === 'string' ? workspace.openStepItem(number, name) : Promise.reject(new Error('Invalid step item')),
     );
     try {
-      await workspace.reopenLast();
+      // The last workspace is reopened at startup.
+      if (workspaceManager.workspace) await workspace.open(workspaceManager.workspace.path);
     } catch (error) {
       log('[workspace] could not reopen the last workspace:', error instanceof Error ? error.message : error);
     }
 
+    Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'editMenu' }]));
     hardenSession();
     if (!devUrl) serveRenderer();
     const window = createWindow();

@@ -10,8 +10,6 @@ contextBridge.exposeInMainWorld('abBridge', buildBridge((channel, payload) => ip
 // The workspace: one named function per operation, each invoking its own channel. The renderer never supplies a path.
 const workspaceBridge: WorkspaceBridge = {
   current: () => ipcRenderer.invoke('dendra:workspace.current'),
-  create: (name) => ipcRenderer.invoke('dendra:workspace.create', name),
-  open: () => ipcRenderer.invoke('dendra:workspace.open'),
   createStep: (input) => ipcRenderer.invoke('dendra:workspace.createStep', input),
   listStep: (number) => ipcRenderer.invoke('dendra:workspace.listStep', number),
   openStepFolder: (number) => ipcRenderer.invoke('dendra:workspace.openStepFolder', number),
