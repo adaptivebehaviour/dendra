@@ -1,6 +1,6 @@
 {
   "mode": "packages",
-  "release": "2.5.0",
+  "release": "2.5.1",
   "source": "electron-fastapi",
   "project_type": "composite",
   "application": "electron-fastapi",
@@ -12,7 +12,7 @@
     "language": "python",
     "app_type": "fastapi"
   },
-  "scaffold_release": "2.5.0",
+  "scaffold_release": "2.5.1",
   "files": [
     ".gitattributes",
     ".vscode/launch.json",
